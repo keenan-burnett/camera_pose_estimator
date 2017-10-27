@@ -26,14 +26,14 @@ I = double(I);
 
 % Create an ROI around the checkerboard
 [snip,X,Y,p] = mask(I, boundPoly);
-% figure(1);
-% imshow(uint8(snip));
+figure(1);
+imshow(uint8(snip));
 bw = mask2(I, boundPoly);
-% figure(2);
-% imshow(uint8(bw));
+figure(2);
+imshow(uint8(bw));
 [bwsnip,~,~,~] = mask(bw,boundPoly);
-% figure(3);
-% imshow(uint8(bwsnip));
+figure(3);
+imshow(uint8(bwsnip));
 
 % Perform Harris Corner Detection
 kx = [-1 0 1; -2 0 2; -1 0 1];
@@ -45,9 +45,11 @@ Iy2 = gaussian_blur(Iy.^2,7,2);
 Ixy = gaussian_blur(Ix.*Iy,7,2);
 [h,w] = size(snip);
 C = zeros(h,w);
+
+
 f = find(bwsnip);
 [bwRows,bwCols] = ind2sub([h,w],f);
-[len,~] = size(bwRows);
+[len,~] = size(rows);
 for i = 1:len
     u = bwCols(i);
     v = bwRows(i);
@@ -57,38 +59,21 @@ end
 
 
 
-% for i = 1:h
-%     for j = 1:w
-%         M = [Ix2(i,j) Ixy(i,j); Ixy(i,j) Iy2(i,j)];
-%         C(i,j) = det(M) - 0.04 * (trace(M))^2;
-%     end
-% end
+for i = 1:h
+    for j = 1:w
+        M = [Ix2(i,j) Ixy(i,j); Ixy(i,j) Iy2(i,j)];
+        C(i,j) = det(M) - 0.04 * (trace(M))^2;
+    end
+end
 
 % Threshold on harris corner value
-corners = C > 0.1*max(C(:));
-
-
-% Show: x junctions after subpixel estimation
-[row,col] = find(corners);
-imshow(uint8(I));
-hold on
-plot(col + X - p, row + Y - p, 'r+');
-hold off
-
+corners = C > 0.06*max(C(:));
 
 % Erode the points resulting from the threshold
 k = ones(5);
 erode = conv2(corners,k,'same');
 maximum = max(erode(:));
 corners = erode >= maximum;
-
-
-% Show: x junctions after subpixel estimation
-[row,col] = find(corners);
-imshow(uint8(I));
-hold on
-plot(col + X - p, row + Y - p, 'r+');
-hold off
 
 % Reduce clusters to single points
 [row,col] = find(corners);
@@ -113,13 +98,6 @@ col = cCol;
 row = row + Y - p;
 col = col + X - p;
 corners = [col row]';
-
-
-% Show: x junctions after subpixel estimation
-imshow(uint8(I));
-hold on
-plot(corners(1,:)', corners(2,:)', 'r+');
-hold off
 
 for i = 1:48
     x = corners(1,i);
@@ -178,7 +156,6 @@ end
 if Y + p >= H
     Y = H - p -1;
 end
-
 snip = Image(Y-p:Y+p,X-p:X+p);
 
 end
