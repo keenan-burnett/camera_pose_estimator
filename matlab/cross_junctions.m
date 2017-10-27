@@ -1,0 +1,219 @@
+function [Ipts] = cross_junctions(I, boundPoly, Wpts)
+% CROSS_JUNCTIONS Find cross-junctions in image with subpixel accuracy.
+%
+%   [Ipts] = CROSS_JUNCTION(I, boundPoly, Wpts) locates a series of cross- 
+%   junction points on a planar calibration target, where the target is
+%   bounded in the image by the specified 4-sided polygon. The number of
+%   cross-junctions identified should be equal to the number of world points.
+%
+%   Note also that the world and image points must be in *correspondence*,
+%   that is, the first world point should map to the first image point, etc.
+%
+%   Inputs:
+%   -------
+%    I          - Image (grayscale, double or integer class).
+%    boundPoly  - 2x4 array defining bounding polygon for target (clockwise).
+%    Wpts       - 3xn array of world points (in 3D, on calibration target).
+%
+%   Outputs:
+%   --------
+%    Ipts  - 2xn array of cross-junctions (x, y), relative to the upper left
+%            corner of I.
+
+%--- FILL ME IN ---
+
+I = double(I);
+
+% Create an ROI around the checkerboard
+[snip,X,Y,p] = mask(I, boundPoly);
+
+% Perform Harris Corner Detection
+kx = [-1 0 1; -2 0 2; -1 0 1];
+ky = kx';
+Iy = conv2(snip,ky,'same');
+Ix = conv2(snip,kx,'same');
+Ix2 = gaussian_blur(Ix.^2,7,2);
+Iy2 = gaussian_blur(Iy.^2,7,2);
+Ixy = gaussian_blur(Ix.*Iy,7,2);
+[h,w] = size(snip);
+C = zeros(h,w);
+for i = 1:h
+    for j = 1:w
+        M = [Ix2(i,j) Ixy(i,j); Ixy(i,j) Iy2(i,j)];
+        C(i,j) = det(M) - 0.04 * (trace(M))^2;
+    end
+end
+
+% Threshold on harris corner value
+corners = C > 0.06*max(C(:));
+
+% Erode the points resulting from the threshold
+k = ones(5);
+erode = conv2(corners,k,'same');
+maximum = max(erode(:));
+corners = erode >= maximum;
+
+% Reduce clusters to single points
+[row,col] = find(corners);
+[len,~] = size(row);
+i = 1;
+j = 1;
+cRow(j,1) = row(i);
+cCol(j,1) = col(i);
+j = j + 1;
+for i = 1:len
+    [R,~] = findNearestNeighborDistance(cRow,cCol,row(i),col(i));
+    if R > 5
+        cRow(j,1) = row(i);
+        cCol(j,1) = col(i);
+        j = j + 1;
+    end
+end
+
+% Perform saddle point detection
+row = cRow;
+col = cCol;
+row = row + Y - p;
+col = col + X - p;
+corners = [col row]';
+
+for i = 1:48
+    x = corners(1,i);
+    y = corners(2,i);
+    snip = I(y-3:y+3,x-3:x+3);
+    pt = saddle_point(snip);
+    corners(1,i) = pt(1) + x - 3;
+    corners(2,i) = pt(2) + y - 3;
+end
+
+% Sort the points in row-major order
+Ipts = sort_corners(corners);
+
+
+% Show: x junctions after subpixel estimation
+imshow(uint8(I));
+hold on
+plot(corners(1,:)', corners(2,:)', 'r+');
+hold off
+  
+%------------------
+end
+
+% Returns a square region of interest with same center as boundpoly
+function [snip,X,Y,p] = mask(Image, boundpoly)
+[H,W] = size(Image);
+
+x2 = max(boundpoly(1,:));
+x1 = min(boundpoly(1,:));
+y1 = min(boundpoly(2,:));
+y2 = max(boundpoly(2,:));
+
+X = (x1 + x2)/2;
+X = round(X);
+Y = (y1 + y2)/2;
+Y = round(Y);
+w = round(x2 - x1);
+h = round(y2 - y1);
+p = floor(w/2);
+if w < h
+    p = floor(h/2);
+end
+
+if 2*p + 1 > H
+    p = floor(H/2) - 1;
+end
+if 2*p > W
+    p = floor(W/2) - 1;
+end
+
+p = floor(p * 0.85);
+
+if X + p >= W
+    X = W - p - 1;
+end
+if Y + p >= H
+    Y = H - p -1;
+end
+snip = Image(Y-p:Y+p,X-p:X+p);
+
+end
+
+% finds the nearest neighbor in (rows,cols) to (y,x)
+function [R,index] = findNearestNeighborDistance(rows,cols,y,x)
+    [len,~] = size(rows);
+    R = inf;
+    index = 0;
+    for i = 1:len
+        r = (rows(i) - y)^2 + (cols(i) - x)^2;
+        if r < R
+            R = r;
+            index = i;
+        end
+    end
+    R = sqrt(R);
+end
+
+% Sorts 'corners' into row-major order
+function sorted = sort_corners(corners)
+    sorted = zeros(2,48);
+    for i = 1:6
+        rows = corners(2,:)';
+        cols = corners(1,:)';
+        r = rows.^2 + cols.^2;
+        [~,index] = min(r);
+        p = zeros(2,8);
+        
+        
+        p(:,1) = corners(:,index);
+        corners(:,index) = [];
+        
+        for j = 2:8
+            p_0 = p(:,j-1);
+            rows = corners(2,:)';
+            cols = corners(1,:)';
+            [~,index1] = findNearestNeighborDistance(rows,cols,p_0(2,1),p_0(1,1));
+            p_1 = corners(:,index1);
+            corners2 = corners;
+            corners2(:,index1) = [];
+            rows2 = corners2(2,:)';
+            cols2 = corners2(1,:)';
+            [~,index2] = findNearestNeighborDistance(rows2,cols2,p_0(2,1),p_0(1,1));
+            if i < 6
+                p_2 = corners2(:,index2);
+                if p_2(1) > p_1(1)
+                    p(:,j) = p_2;
+                    [~,index2] = findNearestNeighborDistance(rows,cols,p_2(2,1),p_2(1,1));
+                    corners(:,index2) = [];
+                else
+                    p(:,j) = p_1;
+                    corners(:,index1) = [];
+                end
+            else
+                p(:,j) = p_1;
+                corners(:,index1) = [];
+            end
+        end
+        sorted(:,((i - 1) * 8 + 1): i * 8) = p;    
+    end
+end
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+        
+    
