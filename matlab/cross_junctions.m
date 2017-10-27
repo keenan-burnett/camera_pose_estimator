@@ -24,16 +24,8 @@ function [Ipts] = cross_junctions(I, boundPoly, Wpts)
 
 I = double(I);
 
-% Create an ROI around the checkerboard
-% [snip,X,Y,p] = mask(I, boundPoly);
-% figure(1);
-% imshow(uint8(snip));
-bw = mask2(I, boundPoly);
-% figure(2);
-% imshow(uint8(bw));
-% [bwsnip,~,~,~] = mask(bw,boundPoly);
-% figure(3);
-% imshow(uint8(bwsnip));
+% Create an polygon mask around the checkerboard
+bw = mask(I, boundPoly);
 
 % Perform Harris Corner Detection
 kx = [-1 0 1; -2 0 2; -1 0 1];
@@ -55,15 +47,6 @@ for i = 1:len
     C(v,u) = det(M) - 0.04 * (trace(M))^2;
 end
 
-
-
-% for i = 1:h
-%     for j = 1:w
-%         M = [Ix2(i,j) Ixy(i,j); Ixy(i,j) Iy2(i,j)];
-%         C(i,j) = det(M) - 0.04 * (trace(M))^2;
-%     end
-% end
-
 % Threshold on harris corner value
 threshold = 0.1;
 corners = C > threshold*max(C(:));
@@ -76,34 +59,11 @@ while len > 2500
     [len,~] = size(row);
 end
 
-
-% Show: x junctions after subpixel estimation
-[row,col] = find(corners);
-imshow(uint8(I));
-hold on
-plot(col, row, 'r.');
-hold off
-
-
-
 % Erode the points resulting from the threshold
-% [row,col] = find(corners);
-% [len,~] = size(row);
-% avg_size = sqrt(len / 48);
-% k = floor(avg_size - 1);
-
 kernel = ones(5);
 erode = conv2(corners,kernel,'same');
 maximum = max(erode(:));
 corners = erode >= maximum;
-
-
-% Show: x junctions after subpixel estimation
-[row,col] = find(corners);
-imshow(uint8(I));
-hold on
-plot(col, row, 'r.');
-hold off
 
 % Reduce clusters to single points
 [row,col] = find(corners);
@@ -123,20 +83,7 @@ for i = 1:len
 end
 
 % Perform saddle point detection
-% row = cRow;
-% col = cCol;
-% row = row + Y - p;
-% col = col + X - p;
 corners = [cCol cRow]';
-
-
-% Show: x junctions after subpixel estimation
-figure(1);
-imshow(uint8(I));
-hold on
-plot(corners(1,:)', corners(2,:)', 'r+');
-hold off
-
 for i = 1:48
     x = corners(1,i);
     y = corners(2,i);
@@ -149,9 +96,7 @@ end
 % Sort the points in row-major order
 Ipts = sort_corners(corners);
 
-
 % Show: x junctions after subpixel estimation
-figure(2);
 imshow(uint8(I));
 hold on
 plot(corners(1,:)', corners(2,:)', 'r+');
@@ -160,84 +105,41 @@ hold off
 %------------------
 end
 
-% Returns a square region of interest with same center as boundpoly
-function [snip,X,Y,p] = mask(Image, boundpoly)
-[H,W] = size(Image);
-
-x2 = max(boundpoly(1,:));
-x1 = min(boundpoly(1,:));
-y1 = min(boundpoly(2,:));
-y2 = max(boundpoly(2,:));
-
-X = (x1 + x2)/2;
-X = round(X);
-Y = (y1 + y2)/2;
-Y = round(Y);
-w = round(x2 - x1);
-h = round(y2 - y1);
-p = floor(w/2);
-if w < h
-    p = floor(h/2);
-end
-
-if 2*p + 1 > H
-    p = floor(H/2) - 1;
-end
-if 2*p > W
-    p = floor(W/2) - 1;
-end
-
-% p = floor(p * 0.85);
-
-if X + p >= W
-    X = W - p - 1;
-end
-if Y + p >= H
-    Y = H - p -1;
-end
-
-snip = Image(Y-p:Y+p,X-p:X+p);
-
-end
-
-
 % Returns a mask delimited by the boundpoly given. 
 % Assumes 4 points clockwise from top-left.
-function bw = mask2(Image, boundpoly)
-[h,w] = size(Image);
+function bw = mask(Image, boundpoly)
+    [h,w] = size(Image);
+    x2 = max(boundpoly(1,:));
+    x1 = min(boundpoly(1,:));
+    y1 = min(boundpoly(2,:));
+    y2 = max(boundpoly(2,:));
+    X = (x1 + x2)/2;
+    X = round(X);
+    Y = (y1 + y2)/2;
+    Y = round(Y);
+    pts = boundpoly;
+    pts(1,:) = pts(1,:) - X;
+    pts(2,:) = pts(2,:) - Y;
+    % Shrink ROI to exclue the outsides of the checkerboard
+    pts = pts * 0.85;
+    pts(1,:) = pts(1,:) + X;
+    pts(2,:) = pts(2,:) + Y;
 
+    bw = ones(h,w) * 255;
+    M1 = [pts(2,1) pts(2,2)] / [pts(1,1) pts(1,2); 1 1];     % Top line  y = mx + b
+    M2 = [pts(1,2) pts(1,3)] / [pts(2,2) pts(2,3); 1 1];    % Right line x = my + b
+    M3 = [pts(2,3) pts(2,4)] / [pts(1,3) pts(1,4); 1 1];   % Bottom line y = mx + b
+    M4 = [pts(1,4) pts(1,1)] / [pts(2,4) pts(2,1); 1 1];    % Left line x = my + b
 
-x2 = max(boundpoly(1,:));
-x1 = min(boundpoly(1,:));
-y1 = min(boundpoly(2,:));
-y2 = max(boundpoly(2,:));
-X = (x1 + x2)/2;
-X = round(X);
-Y = (y1 + y2)/2;
-Y = round(Y);
-pts = boundpoly;
-pts(1,:) = pts(1,:) - X;
-pts(2,:) = pts(2,:) - Y;
-% Shrink ROI to exclue the outsides of the checkerboard
-pts = pts * 0.85;
-pts(1,:) = pts(1,:) + X;
-pts(2,:) = pts(2,:) + Y;
-
-bw = ones(h,w) * 255;
-M1 = [pts(2,1) pts(2,2)] / [pts(1,1) pts(1,2); 1 1];     % Top line  y = mx + b
-M2 = [pts(1,2) pts(1,3)] / [pts(2,2) pts(2,3); 1 1];    % Right line x = my + b
-M3 = [pts(2,3) pts(2,4)] / [pts(1,3) pts(1,4); 1 1];   % Bottom line y = mx + b
-M4 = [pts(1,4) pts(1,1)] / [pts(2,4) pts(2,1); 1 1];    % Left line x = my + b
-
-% Mask out the points outside the polygon created by the four lines above
-for i = 1:h
-    for j = 1:w
-        if (i + 2 < M1 * [j; 1]) || (i > M3 * [j; 1]) || (j-1 > M2 * [i; 1]) ...
-                || (j < M4 * [i; 1])
-            bw(i,j) = 0;
+    % Mask out the points outside the polygon created by the four lines above
+    for i = 1:h
+        for j = 1:w
+            if (i + 2 < M1 * [j; 1]) || (i > M3 * [j; 1]) || (j-1 > M2 * [i; 1]) ...
+                    || (j < M4 * [i; 1])
+                bw(i,j) = 0;
+            end
         end
     end
-end
 
 end
 
@@ -299,24 +201,4 @@ function sorted = sort_corners(corners)
         sorted(:,((i - 1) * 8 + 1): i * 8) = p;    
     end
 end
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-        
     

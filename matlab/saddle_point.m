@@ -38,10 +38,7 @@ Ifine = interp2(X,Y,I,Xfine,Yfine, 'cubic');
 
 % Get the gradients of the image
 kx = [-1 0 1; -1 0 1; -1 0 1];
-kxx = conv2(kx,kx);
 ky = kx';
-kyy = kxx';
-kxy = conv2(kx,ky);
 dfdy = conv2(Ifine,ky,'same');
 dfdx = conv2(Ifine,kx,'same');
 d2fdy2 = conv2(dfdy,ky,'same');
@@ -54,75 +51,16 @@ H = H(3:end-3,3:end-3);
 Mag = sqrt(dfdx.^2 + dfdy.^2);
 Mag = Mag(3:end-3,3:end-3);
 
-% We threshold on Magnitude and the Hessian value
-
+% Threshold on Magnitude and the Hessian value
 mag_t = max(Mag(:)) / 16;
-h_t = max(H(:)) / 2;
-
-threshold = 0.25; %sample = 100
-% saddles = Mag < threshold & H < 50;
-
-% figure(1)
-% Mag = double(Mag);
-% % saddles = Mag < 0.25;
-% saddles = Mag < mag_t;
-% imshow(uint8(Ifine));
-% hold on
-% [row,col] = find(saddles);
-% plot(col+3, row+3, 'r.');
-% hold off
-
-% figure(2)
-% % saddles = H < 0.2;
-% saddles = H < h_t;
-% imshow(uint8(Ifine));
-% hold on
-% [row,col] = find(saddles);
-% plot(col+3, row+3, 'r.');
-% hold off
-
-% figure(1)
-% saddles = Mag < mag_t & H < h_t;
-saddles = Mag < mag_t;
-% imshow(uint8(Ifine));
-% hold on
-[row,col] = find(saddles);
-% plot(col+3, row+3, 'r.');
-% hold off
-
-
-
-% Erode the points resulting from the threshold
-% k = ones(7);
-% erode = conv2(saddles,k,'same');
-% maximum = max(erode(:));
-% saddles = erode >= 0.9*maximum;
-% [row,col] = find(saddles);
-
-
-
-% figure(2);
-% imshow(uint8(Ifine));
-% hold on
-% [row,col] = find(saddles);
-% plot(col+3, row+3, 'r.');
-% hold off
+saddles = Mag < mag_t & H < 10;
 
 % Find 'center-most' point among points produced
+[row,col] = find(saddles);
 r = (row - M/2).^2 + (col - N/2).^2;
 [~,index] = min(r);
-y = row(index);
-x = col(index);
-
-% figure(1);
-% imshow(uint8(Ifine));
-% hold on
-% plot(x, y, 'r+');
-% hold off
-
-x = x + 3;
-y = y + 3;
-
+y = row(index) + 3;
+x = col(index) + 3;
 pt = [x;y] / sampleRate;
 %------------------
   
