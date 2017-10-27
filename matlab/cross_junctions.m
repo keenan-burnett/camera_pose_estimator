@@ -25,27 +25,27 @@ function [Ipts] = cross_junctions(I, boundPoly, Wpts)
 I = double(I);
 
 % Create an ROI around the checkerboard
-[snip,X,Y,p] = mask(I, boundPoly);
+% [snip,X,Y,p] = mask(I, boundPoly);
 % figure(1);
 % imshow(uint8(snip));
 bw = mask2(I, boundPoly);
 % figure(2);
 % imshow(uint8(bw));
-[bwsnip,~,~,~] = mask(bw,boundPoly);
+% [bwsnip,~,~,~] = mask(bw,boundPoly);
 % figure(3);
 % imshow(uint8(bwsnip));
 
 % Perform Harris Corner Detection
 kx = [-1 0 1; -2 0 2; -1 0 1];
 ky = kx';
-Iy = conv2(snip,ky,'same');
-Ix = conv2(snip,kx,'same');
+Iy = conv2(I,ky,'same');
+Ix = conv2(I,kx,'same');
 Ix2 = gaussian_blur(Ix.^2,7,2);
 Iy2 = gaussian_blur(Iy.^2,7,2);
 Ixy = gaussian_blur(Ix.*Iy,7,2);
-[h,w] = size(snip);
+[h,w] = size(I);
 C = zeros(h,w);
-f = find(bwsnip);
+f = find(bw);
 [bwRows,bwCols] = ind2sub([h,w],f);
 [len,~] = size(bwRows);
 for i = 1:len
@@ -65,20 +65,35 @@ end
 % end
 
 % Threshold on harris corner value
-corners = C > 0.1*max(C(:));
+threshold = 0.1;
+corners = C > threshold*max(C(:));
+[row,~] = find(corners);
+[len,~] = size(row);
+while len > 2500
+    threshold = threshold + 0.01;
+    corners = C > threshold*max(C(:));
+    [row,~] = find(corners);
+    [len,~] = size(row);
+end
 
 
 % Show: x junctions after subpixel estimation
 [row,col] = find(corners);
 imshow(uint8(I));
 hold on
-plot(col + X - p, row + Y - p, 'r+');
+plot(col, row, 'r.');
 hold off
 
 
+
 % Erode the points resulting from the threshold
-k = ones(5);
-erode = conv2(corners,k,'same');
+% [row,col] = find(corners);
+% [len,~] = size(row);
+% avg_size = sqrt(len / 48);
+% k = floor(avg_size - 1);
+
+kernel = ones(5);
+erode = conv2(corners,kernel,'same');
 maximum = max(erode(:));
 corners = erode >= maximum;
 
@@ -87,7 +102,7 @@ corners = erode >= maximum;
 [row,col] = find(corners);
 imshow(uint8(I));
 hold on
-plot(col + X - p, row + Y - p, 'r+');
+plot(col, row, 'r.');
 hold off
 
 % Reduce clusters to single points
@@ -108,14 +123,15 @@ for i = 1:len
 end
 
 % Perform saddle point detection
-row = cRow;
-col = cCol;
-row = row + Y - p;
-col = col + X - p;
-corners = [col row]';
+% row = cRow;
+% col = cCol;
+% row = row + Y - p;
+% col = col + X - p;
+corners = [cCol cRow]';
 
 
 % Show: x junctions after subpixel estimation
+figure(1);
 imshow(uint8(I));
 hold on
 plot(corners(1,:)', corners(2,:)', 'r+');
@@ -124,10 +140,10 @@ hold off
 for i = 1:48
     x = corners(1,i);
     y = corners(2,i);
-    snip = I(y-3:y+3,x-3:x+3);
+    snip = I(y-2:y+4,x-2:x+4);
     pt = saddle_point(snip);
-    corners(1,i) = pt(1) + x - 3;
-    corners(2,i) = pt(2) + y - 3;
+    corners(1,i) = pt(1) + x - 2;
+    corners(2,i) = pt(2) + y - 2;
 end
 
 % Sort the points in row-major order
@@ -135,6 +151,7 @@ Ipts = sort_corners(corners);
 
 
 % Show: x junctions after subpixel estimation
+figure(2);
 imshow(uint8(I));
 hold on
 plot(corners(1,:)', corners(2,:)', 'r+');
@@ -189,13 +206,28 @@ end
 function bw = mask2(Image, boundpoly)
 [h,w] = size(Image);
 
+
+x2 = max(boundpoly(1,:));
+x1 = min(boundpoly(1,:));
+y1 = min(boundpoly(2,:));
+y2 = max(boundpoly(2,:));
+X = (x1 + x2)/2;
+X = round(X);
+Y = (y1 + y2)/2;
+Y = round(Y);
 pts = boundpoly;
+pts(1,:) = pts(1,:) - X;
+pts(2,:) = pts(2,:) - Y;
+% Shrink ROI to exclue the outsides of the checkerboard
+pts = pts * 0.85;
+pts(1,:) = pts(1,:) + X;
+pts(2,:) = pts(2,:) + Y;
 
 bw = ones(h,w) * 255;
-M1 = [pts(2,1) pts(2,2)] / [pts(1,1) pts(1,2); 1 1];     % Top line  y = mx
-M2 = [pts(1,2) pts(1,3)] / [pts(2,2) pts(2,3); 1 1];    % Right line x = my
-M3 = [pts(2,3) pts(2,4)] / [pts(1,3) pts(1,4); 1 1];   % Bottom line y = mx
-M4 = [pts(1,4) pts(1,1)] / [pts(2,4) pts(2,1); 1 1];    % Left line x = my
+M1 = [pts(2,1) pts(2,2)] / [pts(1,1) pts(1,2); 1 1];     % Top line  y = mx + b
+M2 = [pts(1,2) pts(1,3)] / [pts(2,2) pts(2,3); 1 1];    % Right line x = my + b
+M3 = [pts(2,3) pts(2,4)] / [pts(1,3) pts(1,4); 1 1];   % Bottom line y = mx + b
+M4 = [pts(1,4) pts(1,1)] / [pts(2,4) pts(2,1); 1 1];    % Left line x = my + b
 
 % Mask out the points outside the polygon created by the four lines above
 for i = 1:h
